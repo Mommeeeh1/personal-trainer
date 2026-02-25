@@ -1,0 +1,278 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  TRAINER
+  ADMIN
+}
+
+enum FitnessLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum Equipment {
+  NONE
+  DUMBBELLS
+  BARBELL
+  KETTLEBELL
+  RESISTANCE_BANDS
+  PULL_UP_BAR
+  BENCH
+  CABLES
+  FULL_GYM
+}
+
+enum MuscleGroup {
+  CHEST
+  BACK
+  SHOULDERS
+  BICEPS
+  TRICEPS
+  FOREARMS
+  ABS
+  GLUTES
+  QUADS
+  HAMSTRINGS
+  CALVES
+  FULL_BODY
+  CARDIO
+}
+
+enum Difficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  password      String?   @password @omit
+  emailVerified DateTime?
+  image         String?
+  role          Role      @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts     Account[]
+  sessions     Session[]
+  profile      Profile?
+  workoutPlans WorkoutPlan[]
+  workoutLogs  WorkoutLog[]
+  bodyStats    BodyStat[]
+  chatMessages ChatMessage[]
+  clients      User[]    @relation("TrainerClients")
+  trainer      User?     @relation("TrainerClients", fields: [trainerId], references: [id])
+  trainerId    String?
+
+  @@auth
+  @@allow('create', true)
+  @@allow('read,update', auth() == this)
+  @@allow('read', auth().role == 'TRAINER' && clients?[trainerId == auth().id])
+  @@allow('all', auth().role == 'ADMIN')
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@allow('all', auth() == user)
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@allow('all', auth() == user)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@allow('all', false)
+}
+
+model Profile {
+  id           String        @id @default(cuid())
+  userId       String        @unique
+  goals        String[]
+  fitnessLevel FitnessLevel  @default(BEGINNER)
+  equipment    Equipment[]
+  daysPerWeek  Int           @default(3)
+  sessionLength Int          @default(45)
+  weightKg     Float?
+  heightCm     Float?
+  age          Int?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@allow('all', auth() == user)
+  @@allow('read', auth().role == 'TRAINER' && user.trainerId == auth().id)
+}
+
+model Exercise {
+  id           String       @id @default(cuid())
+  name         String       @unique
+  instructions String       @db.Text
+  videoUrl     String?
+  muscleGroups MuscleGroup[]
+  equipment    Equipment[]
+  difficulty   Difficulty
+  createdAt    DateTime     @default(now())
+
+  workoutExercises WorkoutExercise[]
+  setLogs          SetLog[]
+
+  @@allow('read', auth() != null)
+  @@allow('all', auth().role == 'ADMIN')
+}
+
+model WorkoutPlan {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  generatedByAI Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weeks PlanWeek[]
+
+  @@allow('all', auth() == user)
+  @@allow('read,update', auth().role == 'TRAINER' && user.trainerId == auth().id)
+}
+
+model PlanWeek {
+  id        String  @id @default(cuid())
+  planId    String
+  weekNumber Int
+
+  plan WorkoutPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  days PlanDay[]
+
+  @@allow('all', plan.user == auth())
+  @@allow('read', auth().role == 'TRAINER' && plan.user.trainerId == auth().id)
+}
+
+model PlanDay {
+  id        String  @id @default(cuid())
+  weekId    String
+  dayNumber Int
+  name      String
+  isRest    Boolean @default(false)
+
+  week        PlanWeek          @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  exercises   WorkoutExercise[]
+  workoutLogs WorkoutLog[]
+
+  @@allow('all', week.plan.user == auth())
+  @@allow('read', auth().role == 'TRAINER' && week.plan.user.trainerId == auth().id)
+}
+
+model WorkoutExercise {
+  id          String @id @default(cuid())
+  dayId       String
+  exerciseId  String
+  sets        Int
+  reps        String
+  restSeconds Int    @default(60)
+  order       Int
+  notes       String?
+
+  day      PlanDay  @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id])
+
+  @@allow('all', day.week.plan.user == auth())
+}
+
+model WorkoutLog {
+  id          String    @id @default(cuid())
+  userId      String
+  planDayId   String?
+  date        DateTime
+  completedAt DateTime?
+  durationMin Int?
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planDay PlanDay? @relation(fields: [planDayId], references: [id])
+  setLogs SetLog[]
+
+  @@allow('all', auth() == user)
+  @@allow('read', auth().role == 'TRAINER' && user.trainerId == auth().id)
+}
+
+model SetLog {
+  id         String  @id @default(cuid())
+  logId      String
+  exerciseId String
+  setNumber  Int
+  weightKg   Float?
+  reps       Int?
+  done       Boolean @default(false)
+
+  log      WorkoutLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+  exercise Exercise   @relation(fields: [exerciseId], references: [id])
+
+  @@allow('all', log.user == auth())
+}
+
+model BodyStat {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime
+  weightKg  Float?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@allow('all', auth() == user)
+  @@allow('read', auth().role == 'TRAINER' && user.trainerId == auth().id)
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  role      String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@allow('all', auth() == user)
+}
