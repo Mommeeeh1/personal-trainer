@@ -1,11 +1,16 @@
 {
   "name": "personal-trainer",
   "private": true,
-  "workspaces": ["api"],
+  "workspaces": [
+    "api"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "dev:api": "npm run dev --workspace=api"
+  },
+  "dependencies": {
+    "node": "^25.7.0"
   }
 }
