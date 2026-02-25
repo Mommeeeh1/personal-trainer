@@ -19,6 +19,9 @@
     "fastify-plugin": "^4.5.1",
     "zod": "^3.23.8"
   },
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.7.5",
